@@ -39,20 +39,8 @@ public class FPSController : MonoBehaviour
 
     void Update()
     {
-        bool crouching = Keyboard.current.ctrlKey.isPressed;
-
-        float targetHeight = crouching ? crouchHeight : standHeight;
-
-        controller.height = currentHeight;
-
-        maxSpeed = crouching ? crouchSpeed : currentSpeed;
-
-        //controller.center = new Vector3(0, currentHeight / 2f, 0);
         float dt = Time.deltaTime;
 
-        currentHeight = Mathf.Lerp(currentHeight, targetHeight, dt * 10f);
-
-        // Input
         float x = 0f;
         float z = 0f;
 
@@ -63,6 +51,12 @@ public class FPSController : MonoBehaviour
             if (Keyboard.current.sKey.isPressed) z -= 1;
             if (Keyboard.current.wKey.isPressed) z += 1;
         }
+
+        bool crouching = Keyboard.current.ctrlKey.isPressed;        
+        float targetHeight = crouching ? crouchHeight : standHeight;
+        currentHeight = Mathf.Lerp(currentHeight, targetHeight, dt * 10f);
+        controller.height = currentHeight;
+        maxSpeed = crouching ? crouchSpeed : currentSpeed;
 
         float mouseX = Mouse.current.delta.ReadValue().x * mouseSensitivity;
         float mouseY = Mouse.current.delta.ReadValue().y * mouseSensitivity;
@@ -84,8 +78,6 @@ public class FPSController : MonoBehaviour
             // stick to ground
             if (velocity.y < 0)
                 velocity.y = -2f; // small downward force to keep grounded
-            else if (velocity.y > 0)
-                velocity.y = 0f; // prevent upward carry when grounded
 
 
             ApplyFriction(groundFriction, dt);

@@ -1,23 +1,48 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 
 [RequireComponent(typeof(CharacterController))]
 public class FPSController : MonoBehaviour
 {
     public float maxSpeed = 7f;
     public float crouchSpeed = 3f;
+    public float runSpeed = 14f;
     public float groundAccel = 14f;
     public float airAccel = 2f;
     public float groundFriction = 6f;
     public float gravity = -20f;
     public float jumpForce = 8f;
+    public float jumpCamInitial = -3f;
+    public float jumpCamhold = 8f;
+    public float jumpCamRecoil = -5f;
     public float crouchHeight = 1f;
     public float standHeight = 2f;
+    public float camBobbingFreq = .1f;
+    public float camBobbingAmp = 0.1f;
+    public float wpnBobbingFreq = .1f;
+    public float wpnBobbingAmp = .1f;
+    public float runBobAmpMultiplier = 1.5f;
+    public float runBobMultiplier = 1.5f;
+    public float crouchBobDecreaser = 0.1f;
+    public Transform playerCamPos;
+    public Transform jumpCam;
+    public Transform weaponPos;
+    private bool running = false;
+    private bool jumpFalling = false;
     float currentHeight;
     float currentSpeed;
+    float cameraBob;
+    float weaponBob;
+    float currentCamBobAmp;
+    float currentCamBobFreq;
+    float currentWpnBobAmp;
+    float currentWpnBobFreq;
+    float jumpXCam;
 
     CharacterController controller;
     Vector3 velocity;
+    Vector3 CamStartRot;
 
     public Transform cameraPivot;
     public float mouseSensitivity = 2.5f;
@@ -30,6 +55,12 @@ public class FPSController : MonoBehaviour
         Cursor.visible = false;
         currentHeight = controller.height;
         currentSpeed = maxSpeed;
+        CamStartRot = playerCamPos.localEulerAngles;
+        currentCamBobAmp = camBobbingAmp;
+        currentCamBobFreq = camBobbingFreq;
+        currentWpnBobAmp = wpnBobbingAmp;
+        currentCamBobFreq = wpnBobbingFreq;
+        jumpXCam = 0f;
     }
 
     void Awake()
@@ -44,6 +75,8 @@ public class FPSController : MonoBehaviour
         float x = 0f;
         float z = 0f;
 
+        running = Keyboard.current.leftShiftKey.isPressed;
+        
         if (Keyboard.current != null)
         {
             if (Keyboard.current.aKey.isPressed) x -= 1;
@@ -51,12 +84,26 @@ public class FPSController : MonoBehaviour
             if (Keyboard.current.sKey.isPressed) z -= 1;
             if (Keyboard.current.wKey.isPressed) z += 1;
         }
+        if (Keyboard.current == null)
+        {
+            running = false;
+        }
 
         bool crouching = Keyboard.current.ctrlKey.isPressed;        
         float targetHeight = crouching ? crouchHeight : standHeight;
         currentHeight = Mathf.Lerp(currentHeight, targetHeight, dt * 10f);
         controller.height = currentHeight;
         maxSpeed = crouching ? crouchSpeed : currentSpeed;
+
+        if(running == true)
+        {
+            crouching = false;
+            maxSpeed = runSpeed;
+        }
+        else if(crouching == false)
+        {
+            maxSpeed = currentSpeed;
+        }
 
         float mouseX = Mouse.current.delta.ReadValue().x * mouseSensitivity;
         float mouseY = Mouse.current.delta.ReadValue().y * mouseSensitivity;
@@ -85,18 +132,88 @@ public class FPSController : MonoBehaviour
 
             if (Keyboard.current.spaceKey.wasPressedThisFrame)
             {
+                jumpXCam = jumpCamInitial;
                 velocity.y = jumpForce;
                 crouching = false;
+                StartCoroutine(JumpCamAnimation());
             }
         }
         else
         {
             Accelerate(wishDir, wishSpeed, airAccel, dt);
+            jumpFalling = true;
         }
 
         velocity.y += gravity * dt;
 
         controller.Move(velocity * dt);
+
+        bool isMoving = (x != 0 || z != 0) && grounded;
+
+        float pitch = 0f, roll = 0f;
+        float vert = 0f, hori = 0f;
+
+        if (isMoving)
+        {
+            float freqMul = 1f;
+            float ampMul = 1f;
+        
+            if (running)
+            {
+                freqMul = runBobMultiplier;
+                ampMul = runBobAmpMultiplier;
+            }
+            else if (crouching)
+            {
+                freqMul = 0.7f; // optional slower crouch rhythm
+                ampMul = crouchBobDecreaser;
+            }
+        
+            cameraBob += camBobbingFreq * freqMul * dt;
+            weaponBob += wpnBobbingFreq * freqMul * dt;
+        
+            pitch = Mathf.Sin(cameraBob) * camBobbingAmp * 2f * ampMul;
+            roll  = Mathf.Cos(cameraBob * 0.5f) * camBobbingAmp * 4f * ampMul;
+
+            vert = Mathf.Sin(weaponBob) * wpnBobbingAmp * 2f * ampMul;
+            hori = Mathf.Cos(weaponBob * .5f) * wpnBobbingAmp * 4f * ampMul;
+        }
+        else
+        {
+            cameraBob = 0f;
+            pitch = 0f;
+            roll = 0f;
+            vert = 0f;
+            hori = 0f;
+        }
+        // Rotation offsets
+
+        if(grounded && jumpFalling)
+        {
+            jumpFalling = false;
+            StartCoroutine(JumpCamAnimRecoil());
+        }
+
+
+        Quaternion targetRot = Quaternion.Euler(pitch, 0f, roll);
+        Vector3 targetPos = new Vector3(hori, vert, 0);
+
+        playerCamPos.localRotation = Quaternion.Lerp(
+            playerCamPos.localRotation,
+            targetRot,
+            dt * 10f
+        );
+        weaponPos.localPosition = Vector3.Lerp(
+            weaponPos.localPosition,
+            targetPos,
+            dt * 10f
+        );
+
+        Quaternion jumpRotCam = Quaternion.Euler(jumpXCam, 0, 0);
+        jumpCam.localRotation = Quaternion.Lerp(jumpCam.localRotation, jumpRotCam, dt * 5f);
+
+
+
     }
 
     void ApplyFriction(float friction, float dt)
@@ -129,5 +246,19 @@ public class FPSController : MonoBehaviour
             accelSpeed = addSpeed;
 
         velocity += wishDir * accelSpeed;
+    }
+
+    IEnumerator JumpCamAnimation()
+    {
+        
+        yield return new WaitForSeconds (.2f);
+        jumpFalling = true;
+        jumpXCam = jumpCamhold;
+    }
+    IEnumerator JumpCamAnimRecoil()
+    {
+        jumpXCam = jumpCamRecoil;
+        yield return new WaitForSeconds (.1f);
+        jumpXCam = 0f; 
     }
 }

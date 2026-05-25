@@ -22,22 +22,29 @@ public class FPSController : MonoBehaviour
     public float camBobbingAmp = 0.1f;
     public float wpnBobbingFreq = .1f;
     public float wpnBobbingAmp = .1f;
+    public float wpnRotBobFreq = 1f;
+    public float wpnRotBobAmp = 1f;
     public float runBobAmpMultiplier = 1.5f;
     public float runBobMultiplier = 1.5f;
     public float crouchBobDecreaser = 0.1f;
+    [SerializeField] private float grenadeThrowForce = 400f;
     public Transform playerCamPos;
     public Transform jumpCam;
     public Transform weaponPos;
+    public GameObject[] grenadeObj;
     private bool running = false;
     private bool jumpFalling = false;
+    private bool isGrenadeThrowed = false;
     float currentHeight;
     float currentSpeed;
     float cameraBob;
     float weaponBob;
-    float currentCamBobAmp;
-    float currentCamBobFreq;
-    float currentWpnBobAmp;
-    float currentWpnBobFreq;
+    float weaponRotBob;
+    int grenadePollCounter;
+    // float currentCamBobAmp;
+    // float currentCamBobFreq;
+    // float currentWpnBobAmp;
+    // float currentWpnBobFreq;
     float jumpXCam;
 
     CharacterController controller;
@@ -56,10 +63,10 @@ public class FPSController : MonoBehaviour
         currentHeight = controller.height;
         currentSpeed = maxSpeed;
         CamStartRot = playerCamPos.localEulerAngles;
-        currentCamBobAmp = camBobbingAmp;
-        currentCamBobFreq = camBobbingFreq;
-        currentWpnBobAmp = wpnBobbingAmp;
-        currentCamBobFreq = wpnBobbingFreq;
+        // currentCamBobAmp = camBobbingAmp;
+        // currentCamBobFreq = camBobbingFreq;
+        // currentWpnBobAmp = wpnBobbingAmp;
+        // currentCamBobFreq = wpnBobbingFreq;
         jumpXCam = 0f;
     }
 
@@ -87,6 +94,15 @@ public class FPSController : MonoBehaviour
         if (Keyboard.current == null)
         {
             running = false;
+        }
+
+        if(Keyboard.current.gKey.isPressed && !isGrenadeThrowed)
+        {
+            if(grenadePollCounter == 5)
+            {
+                grenadePollCounter = 0;
+            }
+            StartCoroutine(ThrowGrenade());
         }
 
         bool crouching = Keyboard.current.ctrlKey.isPressed;        
@@ -152,6 +168,7 @@ public class FPSController : MonoBehaviour
 
         float pitch = 0f, roll = 0f;
         float vert = 0f, hori = 0f;
+        float wpnPitch = 0f, wpnYaw = 0f;
 
         if (isMoving)
         {
@@ -171,12 +188,16 @@ public class FPSController : MonoBehaviour
         
             cameraBob += camBobbingFreq * freqMul * dt;
             weaponBob += wpnBobbingFreq * freqMul * dt;
+            weaponRotBob += wpnRotBobFreq * freqMul * dt;
         
             pitch = Mathf.Sin(cameraBob) * camBobbingAmp * 2f * ampMul;
             roll  = Mathf.Cos(cameraBob * 0.5f) * camBobbingAmp * 4f * ampMul;
 
             vert = Mathf.Sin(weaponBob) * wpnBobbingAmp * 2f * ampMul;
             hori = Mathf.Cos(weaponBob * .5f) * wpnBobbingAmp * 4f * ampMul;
+
+            //wpnPitch = Mathf.Sin(weaponRotBob * .1f) * wpnRotBobAmp * 1f * ampMul;
+            wpnYaw = Mathf.Cos(-weaponRotBob + 2f) * wpnRotBobAmp * 2f * ampMul;
         }
         else
         {
@@ -185,6 +206,8 @@ public class FPSController : MonoBehaviour
             roll = 0f;
             vert = 0f;
             hori = 0f;
+            wpnPitch = 0f;
+            wpnYaw = 0f;
         }
         // Rotation offsets
 
@@ -197,6 +220,7 @@ public class FPSController : MonoBehaviour
 
         Quaternion targetRot = Quaternion.Euler(pitch, 0f, roll);
         Vector3 targetPos = new Vector3(hori, vert, 0);
+        Quaternion targetWpnRot = Quaternion.Euler(wpnPitch, wpnYaw, 0f);
 
         playerCamPos.localRotation = Quaternion.Lerp(
             playerCamPos.localRotation,
@@ -206,6 +230,11 @@ public class FPSController : MonoBehaviour
         weaponPos.localPosition = Vector3.Lerp(
             weaponPos.localPosition,
             targetPos,
+            dt * 10f
+        );
+        weaponPos.localRotation = Quaternion.Lerp(
+            weaponPos.localRotation,
+            targetWpnRot,
             dt * 10f
         );
 
@@ -260,5 +289,21 @@ public class FPSController : MonoBehaviour
         jumpXCam = jumpCamRecoil;
         yield return new WaitForSeconds (.1f);
         jumpXCam = 0f; 
+    }
+    IEnumerator ThrowGrenade()
+    {
+        grenadeObj[grenadePollCounter].transform.parent = null;
+        grenadeObj[grenadePollCounter].SetActive(true);
+        Transform grenadePos = grenadeObj[grenadePollCounter].GetComponent<Transform>();
+        Rigidbody grenadeRb = grenadeObj[grenadePollCounter].GetComponent<Rigidbody>();
+        Collider grenadeCol = grenadeObj[grenadePollCounter].GetComponent<Collider>();
+        grenadeCol.isTrigger = true;
+        grenadeRb.AddForce(cameraPivot.forward * grenadeThrowForce);
+        isGrenadeThrowed = true;
+        yield return new WaitForSeconds (.2f);
+        grenadeCol.isTrigger = false;
+        yield return new WaitForSeconds (1f);
+        grenadePollCounter++;
+        isGrenadeThrowed = false;
     }
 }
